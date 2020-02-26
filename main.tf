@@ -23,23 +23,23 @@ provider "template" {
   version = "~> 2.1"
 }
 
-//data "aws_eks_cluster" "cluster" {
-//  name = module.eks.cluster_id
-//}
-//
-//data "aws_eks_cluster_auth" "cluster" {
-//  name = module.eks.cluster_id
-//}
+data "aws_eks_cluster" "cluster" {
+  name = module.eks.cluster_id
+}
+
+data "aws_eks_cluster_auth" "cluster" {
+  name = module.eks.cluster_id
+}
 
 data "aws_caller_identity" "current" {}
 
-//provider "kubernetes" {
-//  version                = "1.10.0"
-//  host                   = data.aws_eks_cluster.cluster.endpoint
-//  cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority.0.data)
-//  token                  = data.aws_eks_cluster_auth.cluster.token
-//  load_config_file       = false
-//}
+provider "kubernetes" {
+  version                = "1.10.0"
+  host                   = data.aws_eks_cluster.cluster.endpoint
+  cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority.0.data)
+  token                  = data.aws_eks_cluster_auth.cluster.token
+  load_config_file       = false
+}
 
 data "aws_availability_zones" "available" {}
 
@@ -153,75 +153,75 @@ module "vpc" {
   }
 }
 
-//module "eks" {
-//  source       = "terraform-aws-modules/eks/aws"
-//  cluster_name = local.cluster_name
-//  subnets      = module.vpc.private_subnets
-//
-//  tags = {
-//    Environment = "test"
-//    GithubRepo  = "terraform-aws-eks"
-//    GithubOrg   = "terraform-aws-modules"
-//  }
-//
-//  vpc_id = module.vpc.vpc_id
-//
-//  worker_groups = [
-//    {
-//      name                          = "worker-group-1"
-//      instance_type                 = "t2.micro"
-//      additional_userdata           = "echo foo bar"
-//      asg_desired_capacity          = 2
-//      additional_security_group_ids = [aws_security_group.worker_group_mgmt_one.id]
-//    },
-//    {
-//      name                          = "worker-group-2"
-//      instance_type                 = "t2.micro"
-//      additional_userdata           = "echo foo bar"
-//      additional_security_group_ids = [aws_security_group.worker_group_mgmt_two.id]
-//      asg_desired_capacity          = 1
-//    },
-//  ]
-//
-////  worker_additional_security_group_ids = [aws_security_group.all_worker_mgmt.id]
-////  map_roles                            = var.map_roles
-////  map_users                            = var.map_users
-////  map_accounts                         = var.map_accounts
-//}
+module "eks" {
+  source       = "terraform-aws-modules/eks/aws"
+  cluster_name = local.cluster_name
+  subnets      = module.vpc.private_subnets
 
-//resource "aws_vpc" "vpc" {
-//  cidr_block = "192.168.0.0/22"
-//}
-//
-//data "aws_availability_zones" "azs" {
-//  state = "available"
-//}
+  tags = {
+    Environment = "test"
+    GithubRepo  = "terraform-aws-eks"
+    GithubOrg   = "terraform-aws-modules"
+  }
 
-//resource "aws_subnet" "subnet_az1" {
-//  availability_zone = data.aws_availability_zones.azs.names[0]
-//  cidr_block        = "192.168.0.0/24"
-//  vpc_id            = aws_vpc.vpc.id
-//}
-//
-//resource "aws_subnet" "subnet_az2" {
-//  availability_zone =  data.aws_availability_zones.azs.names[1]
-//  cidr_block        = "192.168.1.0/24"
-//  vpc_id            = aws_vpc.vpc.id
-//}
+  vpc_id = module.vpc.vpc_id
 
-//resource "aws_subnet" "subnet_az3" {
-//  availability_zone = "${data.aws_availability_zones.azs.names[2]}"
-//  cidr_block        = "192.168.2.0/24"
-//  vpc_id            = "${aws_vpc.vpc.id}"
-//}
+  worker_groups = [
+    {
+      name                          = "worker-group-1"
+      instance_type                 = "t2.micro"
+      additional_userdata           = "echo foo bar"
+      asg_desired_capacity          = 2
+      additional_security_group_ids = [aws_security_group.worker_group_mgmt_one.id]
+    },
+    {
+      name                          = "worker-group-2"
+      instance_type                 = "t2.micro"
+      additional_userdata           = "echo foo bar"
+      additional_security_group_ids = [aws_security_group.worker_group_mgmt_two.id]
+      asg_desired_capacity          = 1
+    },
+  ]
 
-//resource "aws_security_group" "sg" {
-//  vpc_id = module.vpc.vpc_id
-//}
+//  worker_additional_security_group_ids = [aws_security_group.all_worker_mgmt.id]
+//  map_roles                            = var.map_roles
+//  map_users                            = var.map_users
+//  map_accounts                         = var.map_accounts
+}
 
-//resource "aws_kms_key" "kms" {
-//  description = "example_kms"
-//}
+resource "aws_vpc" "vpc" {
+  cidr_block = "192.168.0.0/22"
+}
+
+data "aws_availability_zones" "azs" {
+  state = "available"
+}
+
+resource "aws_subnet" "subnet_az1" {
+  availability_zone = data.aws_availability_zones.azs.names[0]
+  cidr_block        = "192.168.0.0/24"
+  vpc_id            = aws_vpc.vpc.id
+}
+
+resource "aws_subnet" "subnet_az2" {
+  availability_zone =  data.aws_availability_zones.azs.names[1]
+  cidr_block        = "192.168.1.0/24"
+  vpc_id            = aws_vpc.vpc.id
+}
+
+resource "aws_subnet" "subnet_az3" {
+  availability_zone = "${data.aws_availability_zones.azs.names[2]}"
+  cidr_block        = "192.168.2.0/24"
+  vpc_id            = "${aws_vpc.vpc.id}"
+}
+
+resource "aws_security_group" "sg" {
+  vpc_id = module.vpc.vpc_id
+}
+
+resource "aws_kms_key" "kms" {
+  description = "example_kms"
+}
 
 resource "aws_msk_cluster" "example" {
   cluster_name           = "ExampleMSK"
