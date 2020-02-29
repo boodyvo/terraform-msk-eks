@@ -153,42 +153,6 @@ module "vpc" {
   }
 }
 
-module "eks" {
-  source       = "terraform-aws-modules/eks/aws"
-  cluster_name = local.cluster_name
-  subnets      = module.vpc.private_subnets
-
-  tags = {
-    Environment = "test"
-    GithubRepo  = "terraform-aws-eks"
-    GithubOrg   = "terraform-aws-modules"
-  }
-
-  vpc_id = module.vpc.vpc_id
-
-  worker_groups = [
-    {
-      name                          = "worker-group-1"
-      instance_type                 = "t2.micro"
-      additional_userdata           = "echo foo bar"
-      asg_desired_capacity          = 2
-      additional_security_group_ids = [aws_security_group.worker_group_mgmt_one.id]
-    },
-    {
-      name                          = "worker-group-2"
-      instance_type                 = "t2.micro"
-      additional_userdata           = "echo foo bar"
-      additional_security_group_ids = [aws_security_group.worker_group_mgmt_two.id]
-      asg_desired_capacity          = 1
-    },
-  ]
-
-//  worker_additional_security_group_ids = [aws_security_group.all_worker_mgmt.id]
-//  map_roles                            = var.map_roles
-//  map_users                            = var.map_users
-//  map_accounts                         = var.map_accounts
-}
-
 resource "aws_vpc" "vpc" {
   cidr_block = "192.168.0.0/22"
 }
@@ -219,9 +183,9 @@ resource "aws_security_group" "sg" {
   vpc_id = module.vpc.vpc_id
 }
 
-resource "aws_kms_key" "kms" {
-  description = "example_kms"
-}
+//resource "aws_kms_key" "kms" {
+//  description = "example_kms"
+//}
 
 resource "aws_msk_cluster" "example" {
   cluster_name           = "ExampleMSK"
@@ -284,88 +248,200 @@ resource "aws_instance" "schema" {
   }
 }
 
+module "eks" {
+  source       = "terraform-aws-modules/eks/aws"
+  cluster_name = local.cluster_name
+  subnets      = module.vpc.private_subnets
 
-resource "aws_instance" "producer" {
-  ami = "ami-0121a97ac334cb2cf"
   tags = {
-    Name = "producer"
+    Environment = "test"
+    GithubRepo  = "terraform-aws-eks"
+    GithubOrg   = "terraform-aws-modules"
   }
-  instance_type = "t2.small"
-  subnet_id = module.vpc.public_subnets[0]
-  vpc_security_group_ids = [ aws_security_group.all_worker_mgmt.id ]
-  user_data = templatefile("produce.sh.tpl", {
-    zoo_keeper = aws_msk_cluster.example.zookeeper_connect_string
-    broker_list = aws_msk_cluster.example.bootstrap_brokers
-  })
-  key_name = "ExampleMSK"
-  provisioner "file" {
-    connection {
-      type     = "ssh"
-      user     = "ec2-user"
-      private_key = file("local")
-      host     = aws_instance.producer.public_ip
-    }
 
-    content      = templatefile("producerscript.sh.tpl", {
-      zoo_keeper = aws_msk_cluster.example.zookeeper_connect_string
-      broker_list = aws_msk_cluster.example.bootstrap_brokers
-    })
-    destination = "~/script.sh"
+  vpc_id = module.vpc.vpc_id
+
+  worker_groups = [
+    {
+      name                          = "worker-group-1"
+      instance_type                 = "t2.micro"
+      additional_userdata           = "echo foo bar"
+      asg_desired_capacity          = 2
+      additional_security_group_ids = [aws_security_group.all_worker_mgmt.id]
+    },
+    {
+      name                          = "worker-group-2"
+      instance_type                 = "t2.micro"
+      additional_userdata           = "echo foo bar"
+      additional_security_group_ids = [aws_security_group.all_worker_mgmt.id]
+      asg_desired_capacity          = 1
+    },
+  ]
+
+  //  worker_additional_security_group_ids = [aws_security_group.all_worker_mgmt.id]
+  //  map_roles                            = var.map_roles
+  //  map_users                            = var.map_users
+  //  map_accounts                         = var.map_accounts
+}
+
+resource "kubernetes_pod" "producer" {
+  metadata {
+    name = "producer"
+    labels = {
+      App = "producer"
+    }
   }
-  provisioner "remote-exec" {
-    connection {
-      type     = "ssh"
-      user     = "ec2-user"
-      private_key = file("local")
-      host     = aws_instance.producer.public_ip
-    }
 
-    inline = [
-      "sudo chmod +x ~/script.sh"
-//      "~/script.sh"
-    ]
+  spec {
+    container {
+      image = "boodyvo/kafka-go-example"
+      name  = "producer"
+      command = [
+        "producer",
+        "--topic=test",
+        "--bs=${aws_msk_cluster.example.bootstrap_brokers}",
+        "--sr=http${aws_instance.schema.public_ip}:8081",
+        "--sp=/schema.avsc"
+      ]
+    }
   }
 }
 
-resource "aws_instance" "consumer" {
-  ami = "ami-0121a97ac334cb2cf"
-  tags = {
-    Name = "consumer"
-  }
-//  key_name = "Yubico ssh"
-  instance_type = "t2.small"
-  subnet_id = module.vpc.public_subnets[0]
-  vpc_security_group_ids = [ aws_security_group.all_worker_mgmt.id ]
-  user_data = templatefile("consumer.sh.tpl", {
-    zoo_keeper = aws_msk_cluster.example.zookeeper_connect_string
-    broker_list = aws_msk_cluster.example.bootstrap_brokers
-  })
-  key_name = "ExampleMSK"
-  provisioner "file" {
-    connection {
-      type     = "ssh"
-      user     = "ec2-user"
-      private_key = file("local")
-      host     = aws_instance.consumer.public_ip
+resource "kubernetes_pod" "consumer" {
+  metadata {
+    name = "consumer"
+    labels = {
+      App = "consumer"
     }
-
-    content      = templatefile("consumerscript.sh.tpl", {
-      zoo_keeper = aws_msk_cluster.example.zookeeper_connect_string
-      broker_list = aws_msk_cluster.example.bootstrap_brokers
-    })
-    destination = "~/script.sh"
   }
-  provisioner "remote-exec" {
-    connection {
-      type     = "ssh"
-      user     = "ec2-user"
-      private_key = file("local")
-      host     = aws_instance.consumer.public_ip
-    }
 
-    inline = [
-      "chmod +x ~/script.sh"
-//      "~/script.sh"
-    ]
+  spec {
+    container {
+      image = "boodyvo/kafka-go-example"
+      name  = "consumer"
+      command = [
+        "consumer",
+        "--topic=test",
+        "--bs=${aws_msk_cluster.example.bootstrap_brokers}",
+        "--sr=http${aws_instance.schema.public_ip}:8081",
+      ]
+    }
   }
 }
+
+//resource "aws_instance" "producer" {
+//  ami = "ami-0121a97ac334cb2cf"
+//  tags = {
+//    Name = "producer"
+//  }
+//  instance_type = "t2.small"
+//  subnet_id = module.vpc.public_subnets[0]
+//  vpc_security_group_ids = [ aws_security_group.all_worker_mgmt.id ]
+//  user_data = templatefile("produce.sh.tpl", {
+//    zoo_keeper = aws_msk_cluster.example.zookeeper_connect_string
+//    broker_list = aws_msk_cluster.example.bootstrap_brokers
+//  })
+//  key_name = "ExampleMSK"
+//  provisioner "file" {
+//    connection {
+//      type     = "ssh"
+//      user     = "ec2-user"
+//      private_key = file("local")
+//      host     = aws_instance.producer.public_ip
+//    }
+//
+//    content      = templatefile("producerscript.sh.tpl", {
+//      zoo_keeper = aws_msk_cluster.example.zookeeper_connect_string
+//      broker_list = aws_msk_cluster.example.bootstrap_brokers
+//    })
+//    destination = "~/script.sh"
+//  }
+//  provisioner "remote-exec" {
+//    connection {
+//      type     = "ssh"
+//      user     = "ec2-user"
+//      private_key = file("local")
+//      host     = aws_instance.producer.public_ip
+//    }
+//
+//    inline = [
+//      "sudo chmod +x ~/script.sh"
+////      "~/script.sh"
+//    ]
+//  }
+//}
+//
+//resource "aws_instance" "consumer" {
+//  ami = "ami-0121a97ac334cb2cf"
+//  tags = {
+//    Name = "consumer"
+//  }
+////  key_name = "Yubico ssh"
+//  instance_type = "t2.small"
+//  subnet_id = module.vpc.public_subnets[0]
+//  vpc_security_group_ids = [ aws_security_group.all_worker_mgmt.id ]
+//  user_data = templatefile("consumer.sh.tpl", {
+//    zoo_keeper = aws_msk_cluster.example.zookeeper_connect_string
+//    broker_list = aws_msk_cluster.example.bootstrap_brokers
+//  })
+//  key_name = "ExampleMSK"
+//  provisioner "file" {
+//    connection {
+//      type     = "ssh"
+//      user     = "ec2-user"
+//      private_key = file("local")
+//      host     = aws_instance.consumer.public_ip
+//    }
+//
+//    content      = templatefile("consumerscript.sh.tpl", {
+//      zoo_keeper = aws_msk_cluster.example.zookeeper_connect_string
+//      broker_list = aws_msk_cluster.example.bootstrap_brokers
+//    })
+//    destination = "~/script.sh"
+//  }
+//  provisioner "remote-exec" {
+//    connection {
+//      type     = "ssh"
+//      user     = "ec2-user"
+//      private_key = file("local")
+//      host     = aws_instance.consumer.public_ip
+//    }
+//
+//    inline = [
+//      "chmod +x ~/script.sh"
+////      "~/script.sh"
+//    ]
+//  }
+//}
+
+//resource "kubernetes_pod" "schema" {
+//  metadata {
+//    name = "schema"
+//    labels = {
+//      App = "schema"
+//    }
+//  }
+//
+//  spec {
+//    container {
+//      image = "confluentinc/cp-schema-registry:5.2.1"
+//      name  = "schema"
+//      env {
+//        name = "SCHEMA_REGISTRY_KAFKASTORE_CONNECTION_URL"
+//        value = aws_msk_cluster.example.zookeeper_connect_string
+//      }
+//      env {
+//        name = "SCHEMA_REGISTRY_HOST_NAME"
+//        value = schemaregistry
+//      }
+//      env {
+//        name = "SCHEMA_REGISTRY_LISTENERS"
+//        value = "http://0.0.0.0:8081"
+//      }
+//
+//      port {
+//        container_port = 8081
+//      }
+//    }
+//  }
+//}
